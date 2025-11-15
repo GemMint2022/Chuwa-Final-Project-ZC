@@ -1,0 +1,54 @@
+spring:
+  data:
+    cassandra:
+      keyspace-name: order_keyspace
+      contact-points: cassandra
+      port: 9042
+      local-datacenter: datacenter1
+      schema-action: CREATE_IF_NOT_EXISTS
+
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: order-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+
+app:
+  services:
+    item-service: ${APP_SERVICES_ITEM_SERVICE:http://mock-item-service:1080}  # 指向 mock service
+  features:
+    item-service-validation: true
+  kafka:
+    topics:
+      order-created: order-created-topic
+      order-canceled: order-canceled-topic
+      order-paid: order-paid-topic
+      order-completed: order-completed-topic
+      payment-success: payment-success-topic
+      payment-failed: payment-failed-topic
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.shop.order: INFO
+    org.springframework.data.cassandra: WARN
+    org.apache.kafka: WARN

@@ -1,0 +1,106 @@
+services:
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-service-test
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATA_CASSANDRA_CONTACT_POINTS=cassandra
+      - SPRING_DATA_CASSANDRA_KEYSPACE_NAME=order_keyspace
+      - SPRING_DATA_CASSANDRA_LOCAL_DATACENTER=datacenter1
+      - SPRING_DATA_CASSANDRA_PORT=9042
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_PROFILES_ACTIVE=docker
+      - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - test-network
+
+  mock-item-service:
+    image: mockserver/mockserver:latest
+    container_name: mock-item-service
+    ports:
+      - "8081:1080"
+    environment:
+      MOCKSERVER_LOG_LEVEL: INFO
+    command: -logLevel INFO -serverPort 1080
+    networks:
+      - test-network
+
+  cassandra:
+    image: cassandra:4.0
+    container_name: cassandra-test
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_CLUSTER_NAME=test_cluster
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_NUM_TOKENS=16
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    networks:
+      - test-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper-test
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo stat | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - test-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka-test
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

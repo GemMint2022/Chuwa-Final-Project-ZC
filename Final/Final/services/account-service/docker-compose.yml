@@ -1,0 +1,55 @@
+services:
+  # MySQL 数据库服务
+  account-db:
+    image: mysql:8.0
+    container_name: account-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: shopping_account
+      MYSQL_USER: shopping_user
+      MYSQL_PASSWORD: shopping_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - account_db_data:/var/lib/mysql
+    networks:
+      - account-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Account Service 应用服务
+  account-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: account-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:mysql://account-db:3306/shopping_account
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: password
+      JWT_SECRET: docker-secret-key-2024-shopping-platform
+      JWT_EXPIRATION: 86400000
+    depends_on:
+      account-db:
+        condition: service_healthy
+    networks:
+      - account-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# 网络配置
+networks:
+  account-network:
+    driver: bridge
+
+# 数据卷配置（持久化 MySQL 数据）
+volumes:
+  account_db_data:

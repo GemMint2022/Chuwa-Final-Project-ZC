@@ -1,0 +1,36 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: item-service
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/item_db
+      auto-index-creation: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: item-service-group
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+logging:
+  level:
+    com.shopping.item: DEBUG
+    org.springframework.data.mongodb.core: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator  # 明确指定base path
+  endpoint:
+    health:
+      enabled: true
+      show-details: always
+    info:
+      enabled: true

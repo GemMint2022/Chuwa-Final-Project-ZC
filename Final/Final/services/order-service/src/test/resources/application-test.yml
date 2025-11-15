@@ -1,0 +1,21 @@
+spring:
+  main:
+    banner-mode: off
+  data:
+    cassandra:
+      keyspace-name: test_keyspace
+      contact-points: localhost
+      port: 9042
+      local-datacenter: datacenter1
+      schema-action: none
+  kafka:
+    bootstrap-servers: localhost:9092
+    enabled: false
+
+cassandra:
+  enabled: false
+
+logging:
+  level:
+    com.shop.order: INFO
+    org.springframework: WARN

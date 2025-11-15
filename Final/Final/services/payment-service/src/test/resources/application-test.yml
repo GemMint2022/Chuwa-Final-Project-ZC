@@ -1,0 +1,48 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL;INIT=CREATE SCHEMA IF NOT EXISTS testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create  # 确保是 create
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        # 禁用 schema 验证
+        javax.persistence.schema-generation.database.action: create
+        hbm2ddl.auto: create
+
+  # 完全禁用安全
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          enabled: false
+
+# 禁用所有安全特性
+security:
+  basic:
+    enabled: false
+  oauth2:
+    client:
+      enabled: false
+    resource:
+      enabled: false
+
+# 日志配置
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    com.shopping.payment: DEBUG
+
+# Feign 测试配置
+feign:
+  client:
+    config:
+      default:
+        enabled: false

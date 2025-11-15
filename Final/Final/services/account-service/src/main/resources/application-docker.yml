@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:mysql://account-db:3306/shopping_account
+    username: root
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: false
+
+jwt:
+  secret: ${JWT_SECRET:docker-secret-key}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
+
+logging:
+  level:
+    com.shopping.account: INFO
+    org.springframework.security: WARN
