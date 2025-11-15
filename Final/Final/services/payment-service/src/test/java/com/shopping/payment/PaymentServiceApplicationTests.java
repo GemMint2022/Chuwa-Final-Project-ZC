@@ -1,15 +1,20 @@
 package com.shopping.payment;
 
+import com.shopping.payment.config.TestKafkaConfig;
+import com.shopping.payment.event.producer.PaymentEventProducer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
-import com.shopping.payment.config.TestSecurityConfig;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestSecurityConfig.class)  // 导入测试安全配置
+@Import(TestKafkaConfig.class)  // 导入测试配置
 class PaymentServiceApplicationTests {
+
+    @MockBean
+    private PaymentEventProducer paymentEventProducer;  // 只需要模拟业务Bean
 
     @Test
     void contextLoads() {

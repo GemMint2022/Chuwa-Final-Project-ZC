@@ -1,33 +1,314 @@
 version: '3.8'
+
+# 自定义网络：所有服务在同一网络，通过服务名通信（如 `account-service`、`mysql-account`）
+networks:
+  microservice-network:
+    driver: bridge
+
+# 持久化卷：各数据库数据持久化（容器删除后数据不丢失）
+volumes:
+  # MySQL 数据卷（账户、支付服务分别用独立库）
+  mysql-account-data:
+  mysql-payment-data:
+  # MongoDB 数据卷（商品服务）
+  mongodb-item-data:
+  # Cassandra 数据卷（订单服务）
+  cassandra-order-data:
+  # 中间件数据卷
+  zookeeper-data:
+  kafka-data:
+  redis-data:
+
 services:
-  mongodb:
-    image: mongo:5.0
-    container_name: mongodb
+  # ------------------------------
+  # 数据库服务（按服务拆分，避免冲突）
+  # ------------------------------
+  # 账户服务 - MySQL
+  mysql-account:
+    image: mysql:8.0
+    container_name: mysql-account
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}  # 从 .env 读取
+      MYSQL_DATABASE: account_db                   # 账户服务专用库
+      MYSQL_USER: account_user
+      MYSQL_PASSWORD: ${ACCOUNT_DB_PASSWORD}
+    volumes:
+      - mysql-account-data:/var/lib/mysql
+      # 挂载账户服务的数据库初始化脚本（若用 Flyway/Liquibase）
+      - ./services/account-service/src/main/resources/db/migration:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"  # 宿主机端口（可修改避免冲突）
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservice-network
+
+  # 支付服务 - MySQL（独立实例，避免与账户服务库冲突）
+  mysql-payment:
+    image: mysql:8.0
+    container_name: mysql-payment
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: payment_db                   # 支付服务专用库
+      MYSQL_USER: payment_user
+      MYSQL_PASSWORD: ${PAYMENT_DB_PASSWORD}
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+      - ./services/payment-service/src/main/resources/db/migration:/docker-entrypoint-initdb.d
+    ports:
+      - "3307:3306"  # 用不同宿主机端口避免冲突
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservice-network
+
+  # 商品服务 - MongoDB
+  mongodb-item:
+    image: mongo:6.0
+    container_name: mongodb-item
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: item_db               # 商品服务专用库
+#    volumes:
+#      - mongodb-item-data:/data/db
+#      # 挂载商品服务的初始化脚本（可选，如创建集合/索引）
+#      - ./services/item-service/src/main/resources/db/init.js:/docker-entrypoint-initdb.d/init.js
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: item_db
-    volumes:
-      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "-u", "${MONGO_ROOT_USERNAME}", "-p", "${MONGO_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservice-network
 
+  # 订单服务 - Cassandra
+  cassandra-order:
+    image: cassandra:4.0
+    container_name: cassandra-order
+    environment:
+      CASSANDRA_CLUSTER_NAME: order-cluster
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      # 初始用户名密码（可选，增强安全性）
+      CASSANDRA_AUTHENTICATOR: PasswordAuthenticator
+      CASSANDRA_AUTHORIZER: CassandraAuthorizer
+    volumes:
+      - cassandra-order-data:/var/lib/cassandra
+      # 挂载订单服务的表结构脚本（schema.cql）
+      - ./services/order-service/src/main/resources/schema.cql:/docker-entrypoint-initdb.d/schema.cql
+    ports:
+      - "9042:9042"  # CQL 客户端端口
+    healthcheck:
+      test: ["CMD", "cqlsh", "-u", "cassandra", "-p", "cassandra", "-e", "DESCRIBE KEYSPACES;"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    networks:
+      - microservice-network
+
+  # ------------------------------
+  # 中间件服务（Kafka、Redis 等）
+  # ------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microservice-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservice-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - microservice-network
+
+  # ------------------------------
+  # 微服务（按服务配置）
+  # ------------------------------
+  # 账户服务
+  account-service:
+    build:
+      context: ./services/account-service  # 指向服务目录
+      dockerfile: Dockerfile                # 服务内的 Dockerfile
+    container_name: account-service
+    ports:
+      - "8082:8082"  # 账户服务端口
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      # MySQL 连接（对应 mysql-account 服务）
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-account:3306/account_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=account_user
+      - SPRING_DATASOURCE_PASSWORD=${ACCOUNT_DB_PASSWORD}
+      # Kafka 连接
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # Redis 连接
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD}
+    depends_on:
+      mysql-account:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservice-network
+
+  # 商品服务
   item-service:
     build:
       context: ./services/item-service
       dockerfile: Dockerfile
     container_name: item-service
     ports:
-      - "8082:8082"
+      - "8083:8083"  # 商品服务端口
     environment:
-      SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/item_db
-      SPRING_PROFILES_ACTIVE: dev
+      - SPRING_PROFILES_ACTIVE=docker
+      # MongoDB 连接（对应 mongodb-item 服务）
+      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb-item:27017/item_db?authSource=admin
+      # Kafka 连接
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # Redis 连接
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD}
     depends_on:
-      - mongodb
+      mongodb-item:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+    networks:
+      - microservice-network
 
-volumes:
-  mongodb_data:
+  # 订单服务
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8081:8081"  # 订单服务端口
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      # Cassandra 连接（对应 cassandra-order 服务）
+      - SPRING_DATA_CASSANDRA_CONTACT_POINTS=cassandra-order
+      - SPRING_DATA_CASSANDRA_PORT=9042
+      - SPRING_DATA_CASSANDRA_KEYSPACE-NAME=order_keyspace
+      - SPRING_DATA_CASSANDRA_USERNAME=cassandra
+      - SPRING_DATA_CASSANDRA_PASSWORD=cassandra
+      # Kafka 连接
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # 依赖服务地址（通过服务名访问）
+      - ACCOUNT_SERVICE_URL=http://account-service:8082
+      - ITEM_SERVICE_URL=http://item-service:8083
+    depends_on:
+      cassandra-order:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      item-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservice-network
+
+  # 支付服务
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "8080:8080"  # 支付服务端口
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      # MySQL 连接（对应 mysql-payment 服务）
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-payment:3306/payment_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=payment_user
+      - SPRING_DATASOURCE_PASSWORD=${PAYMENT_DB_PASSWORD}
+      # Kafka 连接
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # 依赖服务地址
+      - ORDER_SERVICE_URL=http://order-service:8081
+      - ACCOUNT_SERVICE_URL=http://account-service:8082
+    depends_on:
+      mysql-payment:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservice-network

@@ -26,9 +26,8 @@ import java.util.UUID;
 public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final AccountServiceClient accountServiceClient;
     private final PaymentEventProducer paymentEventProducer;
-//    private final JwtTokenUtil jwtTokenUtil;
+    // 移除 AccountServiceClient
 
     @Override
     @Transactional
@@ -36,6 +35,8 @@ public class PaymentServiceImpl implements PaymentService {
                                  String paymentMethod, String idempotencyKey, String currency) {
 
         validatePaymentCreation(orderId, userId, amount, idempotencyKey);
+
+        log.info("Creating payment for user: {}, order: {}", userId, orderId);
 
         Payment payment = Payment.builder()
                 .paymentId(generatePaymentId())
@@ -202,35 +203,22 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void validatePaymentCreation(Long orderId, Long userId, BigDecimal amount, String idempotencyKey) {
-        // Check if payment with same idempotency key already exists
         if (idempotencyKey != null && paymentRepository.findByIdempotencyKey(idempotencyKey).isPresent()) {
-            throw new BusinessException("Duplicate payment request",
-                    "DUPLICATE_PAYMENT_REQUEST", HttpStatus.CONFLICT);
+            throw new BusinessException("Duplicate payment request", "DUPLICATE_PAYMENT_REQUEST");
         }
 
-        // Check if there's already a completed payment for this order
         if (paymentRepository.existsByOrderIdAndStatusIn(orderId,
                 List.of(PaymentStatus.COMPLETED, PaymentStatus.PROCESSING))) {
-            throw new BusinessException("Payment already exists for this order",
-                    "PAYMENT_ALREADY_EXISTS", HttpStatus.CONFLICT);
+            throw new BusinessException("Payment already exists for this order", "PAYMENT_ALREADY_EXISTS");
         }
 
-        // Validate amount
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("Invalid payment amount",
-                    "INVALID_PAYMENT_AMOUNT", HttpStatus.BAD_REQUEST);
+            throw new BusinessException("Invalid payment amount", "INVALID_PAYMENT_AMOUNT");
         }
 
-        // Validate user exists by calling Account Service
-        try {
-            // This would be called with proper authentication in real scenario
-            // For now, we'll assume user validation happens at controller level
-            log.debug("Validating user: {} with Account Service", userId);
-        } catch (Exception e) {
-            throw new BusinessException("User validation failed",
-                    "USER_VALIDATION_FAILED", HttpStatus.BAD_REQUEST);
-        }
+        log.debug("User validation assumed to be completed at API Gateway level");
     }
+
 
     private String generatePaymentId() {
         return "pay_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);

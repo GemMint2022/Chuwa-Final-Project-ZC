@@ -1,8 +1,11 @@
+server:
+  port: 8081  # 服务端口，避免冲突
+
 spring:
   data:
     cassandra:
       keyspace-name: order_keyspace
-      contact-points: cassandra
+      contact-points: cassandra-order  # 与父项目 Cassandra 服务名一致
       port: 9042
       local-datacenter: datacenter1
       schema-action: CREATE_IF_NOT_EXISTS
@@ -25,7 +28,7 @@ spring:
 
 app:
   services:
-    item-service: ${APP_SERVICES_ITEM_SERVICE:http://mock-item-service:1080}  # 指向 mock service
+    item-service: ${APP_SERVICES_ITEM_SERVICE:http://item-service:8083}  # 指向真实的 item-service
   features:
     item-service-validation: true
   kafka:
@@ -36,7 +39,6 @@ app:
       order-completed: order-completed-topic
       payment-success: payment-success-topic
       payment-failed: payment-failed-topic
-
 
 management:
   endpoints:

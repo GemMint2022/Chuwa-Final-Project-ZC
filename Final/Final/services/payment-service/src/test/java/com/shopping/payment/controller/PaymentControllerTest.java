@@ -1,7 +1,7 @@
 package com.shopping.payment.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shopping.account.filter.JwtAuthenticationFilter;
+import com.shopping.common.GlobalExceptionHandler;
 import com.shopping.common.security.JwtTokenUtil;
 import com.shopping.payment.config.TestSecurityConfig;
 import com.shopping.payment.controller.dto.PaymentRequest;
@@ -18,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -30,7 +31,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(PaymentController.class)
-@Import(TestSecurityConfig.class)  // 添加这个
+@ActiveProfiles("test")
+@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})  // 显式导入异常处理器
 @TestPropertySource(properties = {
         "spring.security.basic.enabled=false",
         "security.basic.enabled=false"
@@ -45,13 +47,6 @@ class PaymentControllerTest {
 
     @MockBean
     private PaymentService paymentService;
-
-    // Mock 安全相关的 Bean
-    @MockBean
-    private JwtAuthenticationFilter jwtAuthenticationFilter;
-
-    @MockBean
-    private JwtTokenUtil jwtTokenUtil;
 
     private Payment createTestPayment() {
         return Payment.builder()
@@ -97,18 +92,18 @@ class PaymentControllerTest {
 
     @Test
     void createPayment_InvalidRequest_ReturnsBadRequest() throws Exception {
-        // Given - Missing required fields
-        PaymentRequest request = new PaymentRequest();
-        // orderId and amount are missing
 
-        // When & Then - 添加认证头
+        PaymentRequest request = new PaymentRequest();
+        request.setOrderId(1001L);
+
         mockMvc.perform(post("/api/payments")
                         .header("X-User-Id", "5001")
-                        .header("Authorization", "Bearer mock-token")  // 添加认证头
+                        .header("Authorization", "Bearer mock-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test

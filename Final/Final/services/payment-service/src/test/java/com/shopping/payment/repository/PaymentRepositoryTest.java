@@ -7,8 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -18,7 +21,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import(TestSecurityConfig.class)  // 导入测试安全配置
+@Import(TestSecurityConfig.class)
+@TestPropertySource(properties = {
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
+})
 class PaymentRepositoryTest {
 
     @Autowired
@@ -26,6 +32,9 @@ class PaymentRepositoryTest {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @MockBean  // Mock KafkaTemplate
+    private KafkaTemplate<?, ?> kafkaTemplate;
 
     @Test
     void findByPaymentId_Exists_ReturnsPayment() {

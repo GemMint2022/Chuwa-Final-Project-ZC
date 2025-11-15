@@ -1,0 +1,121 @@
+services:
+  payment-service:
+    build: .
+    container_name: payment-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/payment_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=payment_user
+      - SPRING_DATASOURCE_PASSWORD=payment_pass
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver
+      - SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.MySQL8Dialect
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # 连接 Kafka
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - payment-network
+
+  # MySQL 数据库（不变）
+  mysql:
+    image: mysql:8.0
+    container_name: payment-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=payment_db
+      - MYSQL_USER=payment_user
+      - MYSQL_PASSWORD=payment_pass
+      - MYSQL_ROOT_PASSWORD=root_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./src/main/resources/db/migration:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - payment-network
+
+  # Kafka（ZooKeeper 模式，核心修改）
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: payment-kafka
+    ports:
+      - "9092:9092"  # 对外暴露的端口（宿主机:容器）
+    environment:
+      # 基本配置（ZooKeeper 模式）
+      KAFKA_BROKER_ID: 1  # 单节点 Kafka，ID 设为 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # 连接 ZooKeeper 服务
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092  # 容器间通信的地址（kafka 是容器名）
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT  # 协议映射（简化）
+      # 单节点配置（避免副本数错误）
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # 偏移量主题的副本数（单节点必须设为 1）
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    depends_on:
+      zookeeper:
+        condition: service_healthy  # 等待 ZooKeeper 健康后再启动
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]  # 检查 Kafka 可用性
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - payment-network
+
+  # ZooKeeper（Kafka 依赖，不变）
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: payment-zookeeper
+    ports:
+      - "2181:2181"  # ZooKeeper 端口
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181  # 客户端连接端口
+      ZOOKEEPER_TICK_TIME: 2000  # 心跳时间
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]  # 检查 ZooKeeper 端口
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    networks:
+      - payment-network
+
+  # Redis（不变）
+  redis:
+    image: redis:7-alpine
+    container_name: payment-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - payment-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  payment-network:
+    driver: bridge
+
+

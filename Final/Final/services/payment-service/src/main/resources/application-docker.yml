@@ -1,5 +1,5 @@
 server:
-  port: 8083
+  port: 8080
   servlet:
     context-path: /
 
@@ -11,12 +11,12 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8081/oauth2
+          issuer-uri: http://account-service:8082/oauth2
 
   datasource:
-    url: jdbc:mysql://mysql:3306/payment_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:password}
+    url: jdbc:mysql://mysql-payment:3306/payment_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:payment_user}
+    password: ${DB_PASSWORD:${PAYMENT_DB_PASSWORD}}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -54,6 +54,7 @@ spring:
           paymentCompleted:com.shopping.payment.event.producer.event.PaymentCompletedEvent,
           paymentFailed:com.shopping.payment.event.producer.event.PaymentFailedEvent
 
+# Swagger、Logging、Actuator 配置保持不变
 # Swagger
 springdoc:
   api-docs:

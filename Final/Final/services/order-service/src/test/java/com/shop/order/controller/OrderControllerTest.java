@@ -5,6 +5,9 @@ import com.shop.order.model.OrderStatus;
 import com.shop.order.model.dto.CreateOrderRequest;
 import com.shop.order.model.dto.OrderResponse;
 import com.shop.order.model.dto.UpdateOrderRequest;
+import com.shop.order.repository.OrderByUserRepository;
+import com.shop.order.repository.OrderRepository;
+import com.shop.order.repository.OrderStatusHistoryRepository;
 import com.shop.order.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +45,13 @@ class OrderControllerTest {
 
     @MockBean
     private OrderService orderService;
+
+    @MockBean
+    private OrderRepository orderRepository;
+    @MockBean
+    private OrderByUserRepository orderByUserRepository;
+    @MockBean
+    private OrderStatusHistoryRepository orderStatusHistoryRepository;
 
     private OrderResponse createMockOrderResponse() {
         OrderResponse response = new OrderResponse();

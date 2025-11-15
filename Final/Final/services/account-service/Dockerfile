@@ -2,21 +2,23 @@ FROM openjdk:17-ea-alpine
 
 WORKDIR /app
 
-# 复制构建好的 jar 文件到容器
+# 安装依赖并创建非 root 用户
+RUN apk add --no-cache shadow curl \
+    && groupadd -r spring && useradd -r -g spring spring \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo "Asia/Shanghai" > /etc/timezone
+
+# 复制 JAR 文件（确保文件名匹配）
 COPY target/account-service-1.0.0.jar app.jar
 
-# 修复：安装 shadow（提供 groupadd/useradd）和 curl（提供健康检查命令），创建非 root 用户
-RUN apk add --no-cache shadow curl \
-    && groupadd -r spring && useradd -r -g spring spring
-
-# 切换为非 root 用户运行应用（安全最佳实践）
+# 切换非 root 用户
 USER spring
 
-# 暴露服务端口
-EXPOSE 8081
+# 暴露端口（与服务端口一致）
+EXPOSE 8082
 
-# 设置 JVM 优化参数
+# JVM 优化参数
 ENV JAVA_OPTS="-Xmx512m -Xms256m -Djava.security.egd=file:/dev/./urandom"
 
-# 容器启动命令
+# 启动命令
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+

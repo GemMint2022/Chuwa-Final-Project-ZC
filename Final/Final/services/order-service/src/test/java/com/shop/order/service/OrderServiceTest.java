@@ -246,16 +246,16 @@ class OrderServiceTest {
 
     @Test
     void updateOrderStatusFromString_WithInvalidString_ThrowsException() {
-        // Given
-        when(orderRepository.findById("ORD-TEST-123")).thenReturn(Optional.of(testOrder));
 
-        // When & Then
+        // When & Then：验证抛出异常
         assertThrows(InvalidOrderStateException.class, () -> {
             orderService.updateOrderStatusFromString("ORD-TEST-123", "INVALID_STATUS");
         });
 
+        // 验证 save 从未被调用（进一步确认冗余 Stub 确实无用）
         verify(orderRepository, never()).save(any(Order.class));
     }
+
 
     @Test
     void updateOrderStatus_InvalidTransition_ThrowsException() {

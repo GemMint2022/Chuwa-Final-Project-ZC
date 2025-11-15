@@ -1,11 +1,11 @@
 server:
-  port: 8081
+  port: 8082  # 建议修改，避免端口冲突
 
 spring:
   datasource:
-    url: jdbc:mysql://account-db:3306/shopping_account
-    username: root
-    password: password
+    url: jdbc:mysql://mysql-account:3306/account_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: account_user
+    password: ${ACCOUNT_DB_PASSWORD:account@123}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -18,6 +18,13 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: false
+  # 若使用 Kafka/Redis，补充以下配置
+  kafka:
+    bootstrap-servers: kafka:9092
+  redis:
+    host: redis
+    port: 6379
+    password: ${REDIS_PASSWORD:redis@123}
 
 jwt:
   secret: ${JWT_SECRET:docker-secret-key}
